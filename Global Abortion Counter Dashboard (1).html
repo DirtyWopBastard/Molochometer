@@ -1,0 +1,735 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Global Abortion Counter | Real-Time Demographic & Health Ledger</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Inter & JetBrains Mono for tabular LED-style telemetry -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700;800&display=swap" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    },
+                    colors: {
+                        ledger: {
+                            bg: '#06080b',
+                            panel: '#0d1117',
+                            border: '#1e2631',
+                            highlight: '#161b22',
+                            amber: '#f59e0b',
+                            crimson: '#ef4444',
+                            cyan: '#06b6d4',
+                            emerald: '#10b981',
+                            slate: '#94a3b8'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Tabular numerals prevent horizontal jitter during 50ms ticks */
+        .tabular-nums-strict {
+            font-variant-numeric: tabular-nums;
+            font-feature-settings: "tnum" 1, "zero" 1;
+        }
+        /* Subtle CRT/LED glow effects */
+        .led-glow-red {
+            text-shadow: 0 0 18px rgba(239, 68, 68, 0.35);
+        }
+        .led-glow-amber {
+            text-shadow: 0 0 14px rgba(245, 158, 11, 0.3);
+        }
+        .led-glow-cyan {
+            text-shadow: 0 0 14px rgba(6, 182, 212, 0.25);
+        }
+        .led-glow-emerald {
+            text-shadow: 0 0 14px rgba(16, 185, 129, 0.25);
+        }
+        /* Custom scrollbar for dark ledger aesthetic */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #06080b;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #1e2631;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #2e3a4b;
+        }
+    </style>
+</head>
+<body class="bg-ledger-bg text-slate-200 font-sans antialiased min-h-screen flex flex-col selection:bg-amber-500/30 selection:text-amber-200">
+
+    <!-- Top Status & Telemetry Header Bar -->
+    <header class="border-b border-ledger-border bg-ledger-panel/90 backdrop-blur-md sticky top-0 z-30">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex flex-col sm:flex-row items-center justify-between gap-3">
+            <!-- Brand / Title -->
+            <div class="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-start">
+                <div class="flex items-center gap-2.5">
+                    <span class="relative flex h-3 w-3">
+                        <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                        <span class="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
+                    </span>
+                    <h1 class="text-base sm:text-lg font-bold tracking-wider uppercase text-white">
+                        Global Abortion <span class="text-amber-500">Counter</span>
+                    </h1>
+                </div>
+                <span class="text-[11px] font-mono px-2 py-0.5 rounded bg-slate-800/80 text-slate-400 border border-slate-700/60">
+                    WHO / GUTTMACHER MODEL
+                </span>
+            </div>
+
+            <!-- Live UTC Clock & Session Controls -->
+            <div class="flex flex-wrap items-center justify-between sm:justify-end gap-3 w-full sm:w-auto text-xs font-mono">
+                <div class="flex items-center gap-2 bg-black/50 px-3 py-1.5 rounded border border-ledger-border">
+                    <span class="text-slate-400">UTC:</span>
+                    <span id="utc-clock" class="text-cyan-400 font-semibold tabular-nums-strict">--:--:--</span>
+                </div>
+
+                <!-- Simulation Speed / Mode Control -->
+                <div class="flex items-center bg-black/50 p-1 rounded border border-ledger-border" role="group" aria-label="Simulation controls">
+                    <button id="btn-pause" onclick="togglePause()" class="px-2.5 py-1 rounded text-xs font-semibold transition-colors bg-slate-800 text-amber-400 hover:bg-slate-700">
+                        PAUSE
+                    </button>
+                    <button id="btn-reset-session" onclick="resetSession()" class="ml-1 px-2.5 py-1 rounded text-xs font-semibold transition-colors text-slate-400 hover:text-white hover:bg-slate-800" title="Reset 'Since Page Opened' counter">
+                        RESET SESSION
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Dashboard Container -->
+    <main class="flex-grow max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+
+        <!-- PRIMARY HERO COUNTER PANEL (USDebtClock / Worldometer Main Ticker Style) -->
+        <section class="bg-ledger-panel border-2 border-ledger-border rounded-xl p-5 sm:p-8 shadow-2xl relative overflow-hidden">
+            <!-- Subtle Grid Background Overlay -->
+            <div class="absolute inset-0 opacity-[0.03] pointer-events-none" style="background-image: radial-gradient(#ffffff 1px, transparent 1px); background-size: 16px 16px;"></div>
+
+            <div class="relative z-10 flex flex-col items-center text-center">
+                <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-red-950/40 border border-red-800/40 text-red-400 text-xs font-mono uppercase tracking-widest mb-3">
+                    <span>Estimated Global Induced Abortions</span>
+                    <span class="text-slate-500">•</span>
+                    <span id="current-year-badge">2026 YTD</span>
+                </div>
+
+                <!-- Massive Primary LED Counter -->
+                <div class="w-full overflow-x-auto py-2 flex justify-center">
+                    <div id="hero-counter" class="font-mono font-extrabold text-4xl sm:text-6xl md:text-7xl lg:text-8xl tracking-tight text-red-500 led-glow-red tabular-nums-strict select-all">
+                        00,000,000
+                    </div>
+                </div>
+
+                <!-- Persistent Cumulative Since Jan 1, 2000 Hero Banner -->
+                <div class="mt-3 w-full max-w-4xl bg-black/60 border border-amber-500/30 rounded-xl px-4 py-3.5 flex flex-col sm:flex-row items-center justify-between gap-2 shadow-inner">
+                    <div class="flex items-center gap-2.5 text-left">
+                        <span class="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse shrink-0"></span>
+                        <div>
+                            <div class="text-xs font-mono font-bold uppercase tracking-wider text-amber-400">
+                                Cumulative Total Since Jan 1, 2000 (00:00 UTC)
+                            </div>
+                            <div class="text-[11px] font-mono text-slate-400">
+                                21st Century Running Ledger (<span id="elapsed-years-2000">26.89</span> yrs @ 73M/yr avg)
+                            </div>
+                        </div>
+                    </div>
+                    <div id="counter-since-2000" class="font-mono text-2xl sm:text-3xl md:text-4xl font-extrabold text-amber-400 led-glow-amber tabular-nums-strict select-all">
+                        0,000,000,000
+                    </div>
+                </div>
+
+                <!-- Sub-metrics Strip directly underneath Hero Counter -->
+                <div class="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-6 w-full max-w-4xl pt-4 border-t border-ledger-border/80">
+                    <div class="bg-black/40 rounded-lg p-3 border border-ledger-border/60">
+                        <div class="text-[11px] font-mono uppercase text-slate-400">Abortions Today (UTC)</div>
+                        <div id="counter-today" class="font-mono text-xl sm:text-2xl font-bold text-amber-400 led-glow-amber tabular-nums-strict mt-0.5">0</div>
+                    </div>
+                    <div class="bg-black/40 rounded-lg p-3 border border-ledger-border/60">
+                        <div class="text-[11px] font-mono uppercase text-slate-400">This Month</div>
+                        <div id="counter-month" class="font-mono text-xl sm:text-2xl font-bold text-amber-400 led-glow-amber tabular-nums-strict mt-0.5">0</div>
+                    </div>
+                    <div class="bg-black/40 rounded-lg p-3 border border-ledger-border/60">
+                        <div class="text-[11px] font-mono uppercase text-slate-400">Since Page Opened</div>
+                        <div id="counter-session" class="font-mono text-xl sm:text-2xl font-bold text-cyan-400 led-glow-cyan tabular-nums-strict mt-0.5">0</div>
+                    </div>
+                    <div class="bg-black/40 rounded-lg p-3 border border-ledger-border/60">
+                        <div class="text-[11px] font-mono uppercase text-slate-400">Avg. Rate / Second</div>
+                        <div class="font-mono text-xl sm:text-2xl font-bold text-slate-200 tabular-nums-strict mt-0.5">2.31 <span class="text-xs font-normal text-slate-500">/sec</span></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- TIME-SCALE VIEW SELECTOR BAR -->
+        <section class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-ledger-panel border border-ledger-border rounded-xl px-4 py-3">
+            <div class="flex items-center gap-2">
+                <span class="text-xs font-mono uppercase tracking-wider text-slate-400">Regional & Context Timeframe:</span>
+            </div>
+            <div class="grid grid-cols-2 sm:flex gap-1.5 w-full sm:w-auto bg-black/60 p-1 rounded-lg border border-ledger-border" role="tablist">
+                <button data-scale="since2000" onclick="setTimeScale('since2000')" class="scale-btn px-3 py-1.5 rounded-md text-xs font-mono font-semibold transition-all text-slate-400 hover:text-white">
+                    SINCE 2000
+                </button>
+                <button data-scale="year" onclick="setTimeScale('year')" class="scale-btn px-3 py-1.5 rounded-md text-xs font-mono font-semibold transition-all bg-amber-500 text-black shadow">
+                    THIS YEAR (YTD)
+                </button>
+                <button data-scale="today" onclick="setTimeScale('today')" class="scale-btn px-3 py-1.5 rounded-md text-xs font-mono font-semibold transition-all text-slate-400 hover:text-white">
+                    TODAY (UTC)
+                </button>
+                <button data-scale="session" onclick="setTimeScale('session')" class="scale-btn px-3 py-1.5 rounded-md text-xs font-mono font-semibold transition-all text-slate-400 hover:text-white">
+                    SINCE OPENED
+                </button>
+            </div>
+        </section>
+
+        <!-- DUAL LEDGER GRID: REGIONAL BREAKDOWN & GLOBAL CONTEXTUAL METRICS -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+            <!-- LEFT COLUMN (7 cols): REGIONAL BREAKDOWN LEDGER -->
+            <section class="lg:col-span-7 bg-ledger-panel border border-ledger-border rounded-xl p-5 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between border-b border-ledger-border pb-3 mb-4">
+                        <div>
+                            <h2 class="text-sm font-bold uppercase tracking-wider text-white flex items-center gap-2">
+                                <span class="w-2 h-2 rounded-full bg-amber-500"></span>
+                                Regional Breakdown Ledger
+                            </h2>
+                            <p class="text-xs text-slate-400 mt-0.5">Proportional distribution based on UN & Guttmacher regional incidence estimates</p>
+                        </div>
+                        <span id="regional-scale-label" class="text-[11px] font-mono px-2 py-1 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                            YEAR TO DATE
+                        </span>
+                    </div>
+
+                    <!-- Regional Cards Container (Populated & updated via JS) -->
+                    <div id="regional-grid" class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                        <!-- Rendered dynamically -->
+                    </div>
+                </div>
+
+                <!-- Rate Reference Footer inside Regional Panel -->
+                <div class="mt-5 pt-3 border-t border-ledger-border/70 flex flex-wrap items-center justify-between gap-2 text-xs font-mono text-slate-400">
+                    <span>GLOBAL PACE: <strong class="text-slate-200">~138.9 / min</strong></span>
+                    <span>DAILY AVG: <strong class="text-slate-200">~200,000 / day</strong></span>
+                    <span>ANNUAL BASELINE: <strong class="text-slate-200">73,000,000 / yr</strong></span>
+                </div>
+            </section>
+
+            <!-- RIGHT COLUMN (5 cols): CONTEXTUAL GLOBAL HEALTH & DEMOGRAPHIC METRICS -->
+            <section class="lg:col-span-5 bg-ledger-panel border border-ledger-border rounded-xl p-5 flex flex-col justify-between space-y-4">
+                <div>
+                    <div class="flex items-center justify-between border-b border-ledger-border pb-3 mb-4">
+                        <div>
+                            <h2 class="text-sm font-bold uppercase tracking-wider text-white flex items-center gap-2">
+                                <span class="w-2 h-2 rounded-full bg-cyan-400"></span>
+                                Reproductive & Health Context
+                            </h2>
+                            <p class="text-xs text-slate-400 mt-0.5">Broader global pregnancy & maternal safety indicators</p>
+                        </div>
+                    </div>
+
+                    <!-- Contextual Live Counters -->
+                    <div class="space-y-3">
+                        <!-- Unintended Pregnancies -->
+                        <div class="bg-black/50 border border-ledger-border rounded-lg p-3.5">
+                            <div class="flex justify-between items-start gap-2">
+                                <span class="text-xs font-semibold uppercase tracking-wide text-slate-300">Global Unintended Pregnancies</span>
+                                <span class="text-[11px] font-mono text-cyan-400 bg-cyan-950/50 px-1.5 py-0.5 rounded border border-cyan-800/40">~121M / yr</span>
+                            </div>
+                            <div id="ctx-unintended" class="font-mono text-2xl sm:text-3xl font-bold text-cyan-400 led-glow-cyan tabular-nums-strict mt-1">
+                                0
+                            </div>
+                            <p class="text-[11px] text-slate-400 mt-1">
+                                Approx. <strong class="text-slate-200">61%</strong> of all unintended pregnancies end in induced abortion globally.
+                            </p>
+                        </div>
+
+                        <!-- Total Global Pregnancies (Estimated) -->
+                        <div class="bg-black/50 border border-ledger-border rounded-lg p-3.5">
+                            <div class="flex justify-between items-start gap-2">
+                                <span class="text-xs font-semibold uppercase tracking-wide text-slate-300">Total Global Pregnancies (Est.)</span>
+                                <span class="text-[11px] font-mono text-emerald-400 bg-emerald-950/50 px-1.5 py-0.5 rounded border border-emerald-800/40">~250M / yr</span>
+                            </div>
+                            <div id="ctx-total-pregnancies" class="font-mono text-2xl sm:text-3xl font-bold text-emerald-400 led-glow-emerald tabular-nums-strict mt-1">
+                                0
+                            </div>
+                            <p class="text-[11px] text-slate-400 mt-1">
+                                Roughly <strong class="text-slate-200">29%</strong> of all pregnancies worldwide end in induced abortion.
+                            </p>
+                        </div>
+
+                        <!-- Unsafe Abortions Estimate (WHO) -->
+                        <div class="bg-black/50 border border-ledger-border rounded-lg p-3.5">
+                            <div class="flex justify-between items-start gap-2">
+                                <span class="text-xs font-semibold uppercase tracking-wide text-slate-300">Less-Safe / Unsafe Abortions (WHO)</span>
+                                <span class="text-[11px] font-mono text-amber-400 bg-amber-950/50 px-1.5 py-0.5 rounded border border-amber-800/40">~45% of total</span>
+                            </div>
+                            <div id="ctx-unsafe" class="font-mono text-2xl sm:text-3xl font-bold text-amber-400 led-glow-amber tabular-nums-strict mt-1">
+                                0
+                            </div>
+                            <p class="text-[11px] text-slate-400 mt-1">
+                                WHO estimates ~45% of all abortions are unsafe, with 97% occurring in developing regions.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Key Epidemiological Ratios Summary -->
+                <div class="bg-slate-900/60 border border-ledger-border rounded-lg p-3 grid grid-cols-2 gap-3 text-center">
+                    <div>
+                        <div class="text-[11px] font-mono text-slate-400 uppercase">Global Abortion Rate</div>
+                        <div class="font-mono text-lg font-bold text-white mt-0.5">39 <span class="text-xs font-normal text-slate-400">per 1,000</span></div>
+                        <div class="text-[10px] text-slate-500">women aged 15–49 / yr</div>
+                    </div>
+                    <div class="border-l border-ledger-border">
+                        <div class="text-[11px] font-mono text-slate-400 uppercase">Unintended Ending Rate</div>
+                        <div class="font-mono text-lg font-bold text-white mt-0.5">61.0%</div>
+                        <div class="text-[10px] text-slate-500">of unintended pregnancies</div>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <!-- HISTORICAL REFERENCE LEDGER: 10 MAJOR GENOCIDES IN HUMAN HISTORY -->
+        <section class="bg-ledger-panel border border-ledger-border rounded-xl p-5 sm:p-6">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-ledger-border pb-3 mb-4">
+                <div>
+                    <h2 class="text-sm font-bold uppercase tracking-wider text-white flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full bg-red-500"></span>
+                        Historical Reference Ledger: 10 Major Genocides in Human History
+                    </h2>
+                    <p class="text-xs text-slate-400 mt-0.5">
+                        Scholarly death toll estimates vary across archival sources; each event is presented with standard historical consensus ranges.
+                    </p>
+                </div>
+                <span class="text-[11px] font-mono px-2.5 py-1 rounded bg-red-950/40 text-red-400 border border-red-800/40 self-start sm:self-auto">
+                    HISTORICAL ARCHIVE • 10 ENTRIES
+                </span>
+            </div>
+
+            <!-- Responsive Table Ledger -->
+            <div class="overflow-x-auto rounded-lg border border-ledger-border bg-black/40">
+                <table class="w-full text-left border-collapse min-w-[780px]">
+                    <thead>
+                        <tr class="border-b border-ledger-border bg-slate-900/80 text-[11px] font-mono uppercase tracking-wider text-slate-400">
+                            <th class="py-3 px-3.5 w-14">Rank</th>
+                            <th class="py-3 px-3.5">Historical Event</th>
+                            <th class="py-3 px-3.5 w-36">Period</th>
+                            <th class="py-3 px-3.5">Location / Region</th>
+                            <th class="py-3 px-3.5">Target Population</th>
+                            <th class="py-3 px-3.5 text-right">Estimated Death Toll (Scholarly Range)</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-ledger-border/70 text-xs">
+                        <tr class="hover:bg-ledger-highlight/80 transition-colors">
+                            <td class="py-3 px-3.5 font-mono font-bold text-amber-500 tabular-nums-strict">01</td>
+                            <td class="py-3 px-3.5 font-semibold text-white">The Holocaust (Shoah)</td>
+                            <td class="py-3 px-3.5 font-mono text-slate-300 tabular-nums-strict">1941–1945</td>
+                            <td class="py-3 px-3.5 text-slate-300">German-occupied Europe</td>
+                            <td class="py-3 px-3.5 text-slate-400">European Jews (alongside Romani people, Soviet POWs, disabled persons, and others)</td>
+                            <td class="py-3 px-3.5 font-mono font-semibold text-red-400 text-right tabular-nums-strict">~6,000,000 Jews <span class="block text-[10px] font-normal text-slate-400">(11,000,000+ total victims of Nazi mass murder)</span></td>
+                        </tr>
+                        <tr class="hover:bg-ledger-highlight/80 transition-colors">
+                            <td class="py-3 px-3.5 font-mono font-bold text-amber-500 tabular-nums-strict">02</td>
+                            <td class="py-3 px-3.5 font-semibold text-white">The Holodomor (Ukrainian Famine)</td>
+                            <td class="py-3 px-3.5 font-mono text-slate-300 tabular-nums-strict">1932–1933</td>
+                            <td class="py-3 px-3.5 text-slate-300">Soviet Ukraine</td>
+                            <td class="py-3 px-3.5 text-slate-400">Ethnic Ukrainians</td>
+                            <td class="py-3 px-3.5 font-mono font-semibold text-red-400 text-right tabular-nums-strict">~3,500,000 – 5,000,000+</td>
+                        </tr>
+                        <tr class="hover:bg-ledger-highlight/80 transition-colors">
+                            <td class="py-3 px-3.5 font-mono font-bold text-amber-500 tabular-nums-strict">03</td>
+                            <td class="py-3 px-3.5 font-semibold text-white">Cambodian Genocide</td>
+                            <td class="py-3 px-3.5 font-mono text-slate-300 tabular-nums-strict">1975–1979</td>
+                            <td class="py-3 px-3.5 text-slate-300">Democratic Kampuchea (Cambodia)</td>
+                            <td class="py-3 px-3.5 text-slate-400">Urban populations, educated classes, Cham Muslims, Vietnamese, and Khmer citizens</td>
+                            <td class="py-3 px-3.5 font-mono font-semibold text-red-400 text-right tabular-nums-strict">~1,500,000 – 2,000,000</td>
+                        </tr>
+                        <tr class="hover:bg-ledger-highlight/80 transition-colors">
+                            <td class="py-3 px-3.5 font-mono font-bold text-amber-500 tabular-nums-strict">04</td>
+                            <td class="py-3 px-3.5 font-semibold text-white">Armenian Genocide</td>
+                            <td class="py-3 px-3.5 font-mono text-slate-300 tabular-nums-strict">1915–1923</td>
+                            <td class="py-3 px-3.5 text-slate-300">Ottoman Empire (Anatolia)</td>
+                            <td class="py-3 px-3.5 text-slate-400">Ottoman Armenians (alongside Assyrian and Greek minorities)</td>
+                            <td class="py-3 px-3.5 font-mono font-semibold text-red-400 text-right tabular-nums-strict">~1,000,000 – 1,500,000</td>
+                        </tr>
+                        <tr class="hover:bg-ledger-highlight/80 transition-colors">
+                            <td class="py-3 px-3.5 font-mono font-bold text-amber-500 tabular-nums-strict">05</td>
+                            <td class="py-3 px-3.5 font-semibold text-white">Rwandan Genocide</td>
+                            <td class="py-3 px-3.5 font-mono text-slate-300 tabular-nums-strict">1994 (100 Days)</td>
+                            <td class="py-3 px-3.5 text-slate-300">Rwanda</td>
+                            <td class="py-3 px-3.5 text-slate-400">Tutsi minority (and moderate Hutus)</td>
+                            <td class="py-3 px-3.5 font-mono font-semibold text-red-400 text-right tabular-nums-strict">~500,000 – 800,000+</td>
+                        </tr>
+                        <tr class="hover:bg-ledger-highlight/80 transition-colors">
+                            <td class="py-3 px-3.5 font-mono font-bold text-amber-500 tabular-nums-strict">06</td>
+                            <td class="py-3 px-3.5 font-semibold text-white">Bangladesh Genocide</td>
+                            <td class="py-3 px-3.5 font-mono text-slate-300 tabular-nums-strict">1971</td>
+                            <td class="py-3 px-3.5 text-slate-300">East Pakistan (Bangladesh)</td>
+                            <td class="py-3 px-3.5 text-slate-400">Bengali civilians and Hindu minority</td>
+                            <td class="py-3 px-3.5 font-mono font-semibold text-red-400 text-right tabular-nums-strict">~300,000 – 3,000,000 <span class="block text-[10px] font-normal text-slate-400">(scholarly consensus typically 300k–500k; Bangladeshi official estimate up to 3M)</span></td>
+                        </tr>
+                        <tr class="hover:bg-ledger-highlight/80 transition-colors">
+                            <td class="py-3 px-3.5 font-mono font-bold text-amber-500 tabular-nums-strict">07</td>
+                            <td class="py-3 px-3.5 font-semibold text-white">Genocide of Serbs &amp; Minorities in the NDH</td>
+                            <td class="py-3 px-3.5 font-mono text-slate-300 tabular-nums-strict">1941–1945</td>
+                            <td class="py-3 px-3.5 text-slate-300">Independent State of Croatia (WWII Yugoslavia)</td>
+                            <td class="py-3 px-3.5 text-slate-400">Ethnic Serbs, Jews, and Romani</td>
+                            <td class="py-3 px-3.5 font-mono font-semibold text-red-400 text-right tabular-nums-strict">~300,000 – 500,000+</td>
+                        </tr>
+                        <tr class="hover:bg-ledger-highlight/80 transition-colors">
+                            <td class="py-3 px-3.5 font-mono font-bold text-amber-500 tabular-nums-strict">08</td>
+                            <td class="py-3 px-3.5 font-semibold text-white">Dzungar Genocide</td>
+                            <td class="py-3 px-3.5 font-mono text-slate-300 tabular-nums-strict">1755–1758</td>
+                            <td class="py-3 px-3.5 text-slate-300">Dzungar Khanate (Inner Asia)</td>
+                            <td class="py-3 px-3.5 text-slate-400">Dzungar Oirat Mongols</td>
+                            <td class="py-3 px-3.5 font-mono font-semibold text-red-400 text-right tabular-nums-strict">~480,000 – 600,000 <span class="block text-[10px] font-normal text-slate-400">(~80% of population)</span></td>
+                        </tr>
+                        <tr class="hover:bg-ledger-highlight/80 transition-colors">
+                            <td class="py-3 px-3.5 font-mono font-bold text-amber-500 tabular-nums-strict">09</td>
+                            <td class="py-3 px-3.5 font-semibold text-white">Darfur Genocide</td>
+                            <td class="py-3 px-3.5 font-mono text-slate-300 tabular-nums-strict">2003–2005 (and ongoing)</td>
+                            <td class="py-3 px-3.5 text-slate-300">Darfur, Sudan</td>
+                            <td class="py-3 px-3.5 text-slate-400">Fur, Masalit, and Zaghawa peoples</td>
+                            <td class="py-3 px-3.5 font-mono font-semibold text-red-400 text-right tabular-nums-strict">~200,000 – 400,000+</td>
+                        </tr>
+                        <tr class="hover:bg-ledger-highlight/80 transition-colors">
+                            <td class="py-3 px-3.5 font-mono font-bold text-amber-500 tabular-nums-strict">10</td>
+                            <td class="py-3 px-3.5 font-semibold text-white">Herero and Nama Genocide</td>
+                            <td class="py-3 px-3.5 font-mono text-slate-300 tabular-nums-strict">1904–1908</td>
+                            <td class="py-3 px-3.5 text-slate-300">German South West Africa (Namibia)</td>
+                            <td class="py-3 px-3.5 text-slate-400">Herero and Nama peoples</td>
+                            <td class="py-3 px-3.5 font-mono font-semibold text-red-400 text-right tabular-nums-strict">~65,000 – 110,000</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- METHODOLOGY & DATA SOURCES SECTION -->
+        <section class="bg-ledger-panel border border-ledger-border rounded-xl p-5 sm:p-6">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-ledger-border pb-3 mb-4">
+                <h2 class="text-sm font-bold uppercase tracking-wider text-white flex items-center gap-2">
+                    <svg class="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                    Methodology, Baseline Data & Real-Time Interpolation
+                </h2>
+                <span class="text-xs font-mono text-slate-400">Update Interval: 50ms (20 Hz)</span>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-5 text-xs text-slate-300 leading-relaxed">
+                <div class="space-y-1.5">
+                    <h3 class="font-semibold text-amber-400 uppercase tracking-wide font-mono">2. Real-Time &amp; Year 2000 Interpolation</h3>
+                    <p class="text-slate-400">
+                        Because global health agencies compile demographic data multi-annually rather than via live hospital feeds, this dashboard uses <strong class="text-slate-200">continuous linear rate interpolation</strong> (~2.3133 events/second) updated every 50ms. The <strong class="text-slate-200">Cumulative Since Jan 1, 2000</strong> ledger projects the WHO/Guttmacher 73M/year average across exact Gregorian years (365.2425 days/yr) elapsed since <code class="text-slate-300">2000-01-01T00:00:00Z</code>.
+                    </p>
+                </div>
+
+                <div class="space-y-1.5">
+                    <h3 class="font-semibold text-amber-400 uppercase tracking-wide font-mono">2. Real-Time Ticker Interpolation</h3>
+                    <p class="text-slate-400">
+                        Because global health agencies compile demographic and clinical data multi-annually rather than via live hospital feeds, this dashboard uses <strong class="text-slate-200">continuous linear rate interpolation</strong>—the same mathematical approach used by USDebtClock.org and Worldometer. The annual baseline is divided by the exact number of milliseconds in the current calendar year (~2.3148 events/second) and updated smoothly every 50 milliseconds.
+                    </p>
+                </div>
+
+                <div class="space-y-1.5">
+                    <h3 class="font-semibold text-amber-400 uppercase tracking-wide font-mono">3. Regional Weighting</h3>
+                    <p class="text-slate-400">
+                        Regional counters distribute the global annual total using modeled regional shares: <strong class="text-slate-200">Asia (~60.5%)</strong>, <strong class="text-slate-200">Africa (~15.2%)</strong>, <strong class="text-slate-200">Latin America &amp; the Caribbean (~10.4%)</strong>, <strong class="text-slate-200">Europe (~11.3%)</strong>, <strong class="text-slate-200">North America (~2.4%)</strong>, and <strong class="text-slate-200">Oceania (~0.2%)</strong>, reflecting regional population sizes and fertility/abortion incidence rates.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Minimal Footer -->
+    <footer class="border-t border-ledger-border bg-ledger-panel/60 py-4 px-4 text-center text-xs text-slate-500 font-mono">
+        <div class="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
+            <span>DATA SOURCES: WORLD HEALTH ORGANIZATION (WHO) &amp; GUTTMACHER INSTITUTE GLOBAL ESTIMATES</span>
+            <span>STATISTICAL VISUALIZATION • INTERPOLATED TELEMETRY</span>
+        </div>
+    </footer>
+
+    <!-- Application Logic -->
+    <script>
+        /**
+         * Global Health Baseline Constants (Annual Estimates)
+         * Based on WHO / Guttmacher Institute peer-reviewed global estimates:
+         * - ~73,000,000 induced abortions annually worldwide
+         * - ~121,000,000 unintended pregnancies annually worldwide
+         * - ~250,000,000 total pregnancies annually worldwide (73M / 0.292)
+         * - ~45% of global abortions classified as less-safe or least-safe (WHO)
+         */
+        const ANNUAL_BASELINES = {
+            abortions: 73000000,
+            unintendedPregnancies: 121000000,
+            totalPregnancies: 250000000,
+            unsafeRatio: 0.45
+        };
+
+        // Epoch anchor for January 1, 2000 00:00:00 UTC and Gregorian average year length in ms
+        const JAN_1_2000_UTC_MS = Date.UTC(2000, 0, 1, 0, 0, 0, 0);
+        const GREGORIAN_YEAR_MS = 365.2425 * 24 * 60 * 60 * 1000;
+
+        /**
+         * Regional Distribution Model
+         * Shares sum to 1.000 (100%) based on UN demographic regions & Guttmacher incidence modeling
+         */
+        const REGIONS = [
+            { id: 'asia', name: 'Asia', share: 0.605, ratePer1k: 43, color: 'text-amber-400', barColor: 'bg-amber-500' },
+            { id: 'africa', name: 'Africa', share: 0.152, ratePer1k: 33, color: 'text-red-400', barColor: 'bg-red-500' },
+            { id: 'europe', name: 'Europe', share: 0.113, ratePer1k: 30, color: 'text-cyan-400', barColor: 'bg-cyan-500' },
+            { id: 'latam', name: 'Latin America & Caribbean', share: 0.104, ratePer1k: 32, color: 'text-orange-400', barColor: 'bg-orange-500' },
+            { id: 'namerica', name: 'North America', share: 0.024, ratePer1k: 17, color: 'text-emerald-400', barColor: 'bg-emerald-500' },
+            { id: 'oceania', name: 'Oceania', share: 0.002, ratePer1k: 19, color: 'text-indigo-400', barColor: 'bg-indigo-500' }
+        ];
+
+        // Application State
+        let state = {
+            isPaused: false,
+            pausedAt: null,
+            totalPausedMs: 0,
+            sessionStartTime: Date.now(),
+            activeTimeScale: 'year' // 'since2000' | 'year' | 'today' | 'session'
+        };
+
+        // Number Formatter (Standard comma-separated integers)
+        const intFormatter = new Intl.NumberFormat('en-US', {
+            maximumFractionDigits: 0
+        });
+
+        // Decimal Formatter for session counts when numbers are small
+        const sessionFormatter = new Intl.NumberFormat('en-US', {
+            minimumFractionDigits: 1,
+            maximumFractionDigits: 1
+        });
+
+        /**
+         * Initialize Regional Cards in the DOM
+         */
+        function initRegionalGrid() {
+            const container = document.getElementById('regional-grid');
+            if (!container) return;
+
+            container.innerHTML = REGIONS.map(region => `
+                <div class="bg-black/50 border border-ledger-border hover:border-slate-700 transition-colors rounded-lg p-3.5 flex flex-col justify-between">
+                    <div class="flex items-center justify-between gap-2">
+                        <span class="text-xs font-semibold text-slate-200 truncate" title="${region.name}">${region.name}</span>
+                        <span class="text-[11px] font-mono text-slate-400">${(region.share * 100).toFixed(1)}%</span>
+                    </div>
+                    <div id="region-val-${region.id}" class="font-mono text-xl sm:text-2xl font-bold ${region.color} tabular-nums-strict my-1.5">
+                        0
+                    </div>
+                    <div class="space-y-1">
+                        <div class="w-full bg-slate-800/80 h-1.5 rounded-full overflow-hidden">
+                            <div class="${region.barColor} h-full rounded-full" style="width: ${Math.max(region.share * 100, 2)}%"></div>
+                        </div>
+                        <div class="flex justify-between text-[10px] font-mono text-slate-500">
+                            <span>Est. Rate: ${region.ratePer1k}/1k women</span>
+                            <span>${intFormatter.format(Math.round(ANNUAL_BASELINES.abortions * region.share))}/yr</span>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        /**
+         * Calculate exact elapsed fraction of current UTC Year, Month, Day, and Session
+         */
+        function getTimeMetrics(effectiveNowMs) {
+            const now = new Date(effectiveNowMs);
+            const year = now.getUTCFullYear();
+
+            // Start and end of current UTC year (handles leap years accurately)
+            const startOfYear = Date.UTC(year, 0, 1, 0, 0, 0, 0);
+            const startOfNextYear = Date.UTC(year + 1, 0, 1, 0, 0, 0, 0);
+            const yearDurationMs = startOfNextYear - startOfYear;
+            const elapsedYearMs = effectiveNowMs - startOfYear;
+            const yearFraction = Math.max(0, elapsedYearMs / yearDurationMs);
+
+            // Start of current UTC month
+            const startOfMonth = Date.UTC(year, now.getUTCMonth(), 1, 0, 0, 0, 0);
+            const elapsedMonthMs = effectiveNowMs - startOfMonth;
+            const monthFractionOfYear = Math.max(0, elapsedMonthMs / yearDurationMs);
+
+            // Start of current UTC day
+            const startOfDay = Date.UTC(year, now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0);
+            const elapsedDayMs = effectiveNowMs - startOfDay;
+            const dayFractionOfYear = Math.max(0, elapsedDayMs / yearDurationMs);
+
+            // Session elapsed time
+            const elapsedSessionMs = Math.max(0, effectiveNowMs - state.sessionStartTime);
+            const sessionFractionOfYear = elapsedSessionMs / yearDurationMs;
+
+            // Elapsed years since January 1, 2000 00:00:00 UTC using 365.2425-day Gregorian year
+            const elapsedSince2000Ms = Math.max(0, effectiveNowMs - JAN_1_2000_UTC_MS);
+            const yearsSince2000 = elapsedSince2000Ms / GREGORIAN_YEAR_MS;
+
+            return {
+                now,
+                year,
+                yearFraction,
+                monthFractionOfYear,
+                dayFractionOfYear,
+                sessionFractionOfYear,
+                yearsSince2000
+            };
+        }
+
+        /**
+         * Update all counters on screen (called every 50ms)
+         */
+        function updateDashboard() {
+            const rawNow = Date.now();
+            const effectiveNow = state.isPaused ? state.pausedAt : (rawNow - state.totalPausedMs);
+            const metrics = getTimeMetrics(effectiveNow);
+
+            // Update UTC Clock & Year Badge
+            const utcString = metrics.now.toISOString().replace('T', ' ').substring(0, 19);
+            document.getElementById('utc-clock').textContent = utcString;
+            document.getElementById('current-year-badge').textContent = `${metrics.year} YTD`;
+
+            // 1. Hero Counter (Current Year YTD) & Persistent Cumulative Since Jan 1, 2000 Counter
+            const ytdAbortions = ANNUAL_BASELINES.abortions * metrics.yearFraction;
+            const since2000Abortions = ANNUAL_BASELINES.abortions * metrics.yearsSince2000;
+
+            document.getElementById('hero-counter').textContent = intFormatter.format(Math.floor(ytdAbortions));
+            document.getElementById('counter-since-2000').textContent = intFormatter.format(Math.floor(since2000Abortions));
+            document.getElementById('elapsed-years-2000').textContent = metrics.yearsSince2000.toFixed(2);
+
+            // 2. Hero Sub-counters
+            const todayAbortions = ANNUAL_BASELINES.abortions * metrics.dayFractionOfYear;
+            const monthAbortions = ANNUAL_BASELINES.abortions * metrics.monthFractionOfYear;
+            const sessionAbortions = ANNUAL_BASELINES.abortions * metrics.sessionFractionOfYear;
+
+            document.getElementById('counter-today').textContent = intFormatter.format(Math.floor(todayAbortions));
+            document.getElementById('counter-month').textContent = intFormatter.format(Math.floor(monthAbortions));
+            document.getElementById('counter-session').textContent = sessionFormatter.format(sessionAbortions);
+
+            // Determine active fraction multiplier for Regional & Context cards
+            let activeFraction = metrics.yearFraction;
+            let useDecimals = false;
+
+            if (state.activeTimeScale === 'since2000') {
+                activeFraction = metrics.yearsSince2000;
+            } else if (state.activeTimeScale === 'today') {
+                activeFraction = metrics.dayFractionOfYear;
+            } else if (state.activeTimeScale === 'session') {
+                activeFraction = metrics.sessionFractionOfYear;
+                useDecimals = true;
+            }
+
+            // 3. Update Regional Breakdown Counters
+            const totalScaledAbortions = ANNUAL_BASELINES.abortions * activeFraction;
+            REGIONS.forEach(region => {
+                const el = document.getElementById(`region-val-${region.id}`);
+                if (el) {
+                    const val = totalScaledAbortions * region.share;
+                    el.textContent = useDecimals ? sessionFormatter.format(val) : intFormatter.format(Math.floor(val));
+                }
+            });
+
+            // 4. Update Contextual Global Health Counters
+            const unintendedVal = ANNUAL_BASELINES.unintendedPregnancies * activeFraction;
+            const totalPregVal = ANNUAL_BASELINES.totalPregnancies * activeFraction;
+            const unsafeVal = totalScaledAbortions * ANNUAL_BASELINES.unsafeRatio;
+
+            document.getElementById('ctx-unintended').textContent = useDecimals
+                ? sessionFormatter.format(unintendedVal)
+                : intFormatter.format(Math.floor(unintendedVal));
+
+            document.getElementById('ctx-total-pregnancies').textContent = useDecimals
+                ? sessionFormatter.format(totalPregVal)
+                : intFormatter.format(Math.floor(totalPregVal));
+
+            document.getElementById('ctx-unsafe').textContent = useDecimals
+                ? sessionFormatter.format(unsafeVal)
+                : intFormatter.format(Math.floor(unsafeVal));
+        }
+
+        /**
+         * Switch Time Scale for Regional & Contextual Ledgers
+         */
+        function setTimeScale(scale) {
+            state.activeTimeScale = scale;
+
+            // Update button active styling
+            document.querySelectorAll('.scale-btn').forEach(btn => {
+                if (btn.dataset.scale === scale) {
+                    btn.className = 'scale-btn px-3 py-1.5 rounded-md text-xs font-mono font-semibold transition-all bg-amber-500 text-black shadow';
+                } else {
+                    btn.className = 'scale-btn px-3 py-1.5 rounded-md text-xs font-mono font-semibold transition-all text-slate-400 hover:text-white';
+                }
+            });
+
+            // Update badge label
+            const labelMap = {
+                since2000: 'SINCE JAN 1, 2000',
+                year: 'YEAR TO DATE',
+                today: 'TODAY (UTC)',
+                session: 'SINCE PAGE OPENED'
+            };
+            document.getElementById('regional-scale-label').textContent = labelMap[scale] || 'YEAR TO DATE';
+
+            updateDashboard();
+        }
+
+        /**
+         * Pause / Resume Live Interpolation
+         */
+        function togglePause() {
+            const btn = document.getElementById('btn-pause');
+            if (!state.isPaused) {
+                state.isPaused = true;
+                state.pausedAt = Date.now() - state.totalPausedMs;
+                btn.textContent = 'RESUME';
+                btn.classList.remove('text-amber-400');
+                btn.classList.add('text-emerald-400');
+            } else {
+                const now = Date.now();
+                state.totalPausedMs = now - state.pausedAt;
+                state.isPaused = false;
+                state.pausedAt = null;
+                btn.textContent = 'PAUSE';
+                btn.classList.remove('text-emerald-400');
+                btn.classList.add('text-amber-400');
+            }
+        }
+
+        /**
+         * Reset 'Since Page Opened' Session Counter
+         */
+        function resetSession() {
+            const rawNow = Date.now();
+            const effectiveNow = state.isPaused ? state.pausedAt : (rawNow - state.totalPausedMs);
+            state.sessionStartTime = effectiveNow;
+            updateDashboard();
+        }
+
+        // Initialize on DOM Load
+        window.addEventListener('DOMContentLoaded', () => {
+            initRegionalGrid();
+            updateDashboard();
+            // 50ms interval (20 FPS) for crisp, smooth digital counter interpolation
+            setInterval(updateDashboard, 50);
+        });
+    </script>
+</body>
+</html>
